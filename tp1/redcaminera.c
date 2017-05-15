@@ -11,13 +11,14 @@ void rc_imprimirTodo(redCaminera* rc, FILE *pFile) {
 	nodo* nodo_actual_r = rutas->primero;
 	ciudad* ciudad_actual;
 	ruta* ruta_actual;
+	fprintf(pFile,"Ciudades:\n");
 	while (nodo_actual_c != NULL)
 		{
 			ciudad_actual = nodo_actual_c->dato;
 			fprintf(pFile,"[%s,%li]\n", ciudad_actual->nombre, ciudad_actual->poblacion);
 			nodo_actual_c = nodo_actual_c->siguiente;
 		}
-
+	fprintf(pFile,"Rutas:\n");
 	while (nodo_actual_r != NULL)
 		{
 			ruta_actual = nodo_actual_r->dato;

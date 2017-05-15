@@ -72,7 +72,11 @@ extern fprintf
 %define offset_rutas_redCaminera 8
 %define offset_nombre_redCaminera 16
 
-
+;####################################################
+;############## offset para aux #############
+;####################################################
+%define offset_tamanio_puntero 0
+;####################################################
 
 section .text
 
@@ -223,19 +227,19 @@ l_agregarOrdenado:
 	push r14
 	push r15
 	sub rsp, 8
-
+	
 	mov r12, rdi 										; r12 <-- lista**
 	mov r13, rsi 										; r13 <-- dato* 	
 	mov r14, rdx 										; r14 <-- funcion_borrar* 
 	mov r15, rcx 										; r15 <-- func_comparar* 
 
-	;tenemos que agregar un nuevo nodo si o si vamos a crearlo con la info necesaria
+	;tenemos que agregar un nuevo nodo si o si vamos a crearlo, con la info necesaria
 
 	mov rdi, offset_tamanio_struct_nodo
 	call malloc											;rax <-- newNodo*
 
 	mov [rax + offset_funcion_borrar_nodo] , r14
-	mov [rax + offset_dato_nodo] , r13 
+	mov [rax + offset_dato_nodo] , r13 					; funcion borrar y dato ya complete faltan siguiente y anterior
 	
 	mov r12,[r12]										; r12 <-- lista*
 
@@ -277,24 +281,16 @@ l_agregarOrdenado:
 	cmp rcx, NULL 
 	je .agregar_primero_ordenado
 
-	; si estoy aca es porq tengo q agregar en el medio
-
-	; la estructura de la lista no cambia (solo la longitud)
-
-	; solo tengo que actualizar el siguiente y anterior del nodo que voy a insertar
-
-	; siempre agrego por delante asi que en r14 voy a tener el nodo siguiente 
-
 	
-	mov qword[rbx + offset_siguiente_nodo] , r14			; pongo bien el siguiente
-	mov [r14 + offset_anterior_nodo], rbx 
+	mov qword[rbx + offset_siguiente_nodo],r14			; pongo bien el siguiente
+	mov r13, [r14 + offset_anterior_nodo]					; me guardo el anterior
 	
-	mov r14, [r14 + offset_anterior_nodo]					; obtengo el anterior
-	
-	mov [r14 + offset_siguiente_nodo], rbx					; soy el siguiente del anterior 
-	mov [rbx + offset_anterior_nodo], r14 				; el anterior ahora es mi anterior
+	mov [r14 + offset_anterior_nodo], rbx 	
+	mov [r13 + offset_siguiente_nodo], rbx					; soy el siguiente del anterior 
+	mov [rbx + offset_anterior_nodo], r13 				; el anterior ahora es mi anterior
 	
 	jmp	.incrementar_longitud 
+
 
 ;############### CASO 1: Es el primero de la lista
 .agregar_primero_ordenado:
@@ -349,7 +345,7 @@ l_agregarOrdenado:
 ;##########################################  void l borrarTodo(lista* l)  ################################################
 ;########################################                        RDI        ##############################################   
 ;#########################################################################################################################
-
+; 											(PERFECTO)
 global l_borrarTodo
 l_borrarTodo:
 	push rbp
@@ -358,72 +354,37 @@ l_borrarTodo:
 	push r12
 	push r13
 	push r14
-
 	
-	; CASO 0: lista vacia 
-
-	mov rbx, [rdi + offset_primero_lista]							;rbx <-- *primer_nodo
-	cmp rbx, NULL
-	je .borrarListaVacia	
-	;SI TOY ACA LA LISTA NO ES VACIA.
 	mov r12, rdi 													;r12 <-- *lista (guardo)
-	; CASO 1: unico elemento
-
-	mov rcx, [rdi + offset_ultimo_lista]							;rcx <-- *ultimo_nodo
-	cmp rbx,rcx
-	je .borrarLista_unico_elemento
-
-
-	; ESTAMOS EN EL CASO EN EL QUE LA LISTA TIENE MAS DE UN ELEMENTO
-	; OPCION: BORRAR EL PRIMER ELEMENTO Y LLAMAR RECURSIVAMENTE 
-
-	; borramos el dato del nodo 
-		
-	mov r14, [rbx + offset_funcion_borrar_nodo]
 	
-	mov rdi, [rbx+ offset_dato_nodo]
-	call r14
-
-	; ahora tenemos que borrar el nodo pero antes tenemos que mantener el invariante de la lista
-
-	mov r13, [rbx + offset_siguiente_nodo]							; r13 <-- nodo_siguiente* (del que voy a borrar)
-	mov [r12 +  offset_primero_lista], r13						; ahora la el primero de la lista apunta bien 
-	mov qword[r13+ offset_anterior_nodo], NULL    					; ahora el anterior del nuevo primero es NULL
-
-	; borramos el nodo
-	mov rdi, rbx
-	call free
-
-	mov rdi, r12 
-	call l_borrarTodo
-
-	jmp .fin_borrar_todo
-
-.borrarLista_unico_elemento:
-	 
-	mov qword[r12 + offset_primero_lista], NULL
-	mov qword[r12 + offset_ultimo_lista], NULL
-
-	; borro dato
-	mov r14, [rbx + offset_funcion_borrar_nodo]
+	mov rbx, [r12 + offset_primero_lista]							; rbx primer nodo
+	
+	cmp rbx, NULL 											
+	je .termine
+	
+	;sino borro el primer nodo
+.borrando:
+	mov r13, [rbx + offset_funcion_borrar_nodo]
+	mov r14, [rbx + offset_siguiente_nodo]
 	
 	mov rdi, [rbx + offset_dato_nodo]
-	call r14
-
-	; borro nodo
-	mov rdi, rbx 
-	call free 
-
-	; llamada recursiva
-	mov rdi, r12 
-	call l_borrarTodo
-
-.borrarListaVacia:
+	call r13
 	
+	mov rdi, rbx
 	call free
+	
+	cmp r14, NULL
+	je .termine
+	
+	mov rbx,r14	
+	jmp .borrando	
 
-.fin_borrar_todo:
-
+.termine:
+	mov qword[r12 + offset_primero_lista],NULL
+	mov qword[r12 + offset_ultimo_lista],NULL
+	mov rdi, r12
+	call free
+	
 	pop r14
 	pop r13
 	pop r12
@@ -440,7 +401,7 @@ l_borrarTodo:
 ;														rdi 			rsi 
 ;######################  Crea una ciudad y completa sus campos. Realiza una copia del nombre. ############################
 ;#########################################################################################################################
-; 														(PERFECTO)
+; 														(PERFECTO***********)
 global c_crear
 c_crear:
 	push rbp
@@ -476,7 +437,7 @@ c_crear:
 ;#####################################				   rdi 		   rsi 		  ############################################	
 ;##############################  Compara dos ciudades por su nombre (ver str cmp)  #######################################
 ;#########################################################################################################################
-; 													(PERFECTO)
+; 													(PERFECTO**************)
 global c_cmp
 c_cmp:
 	push rbp
@@ -493,7 +454,7 @@ c_cmp:
 ; 															rdi	
 ;##################################  Borra una ciudad. Incluyendo el nombre ##############################################
 ;#########################################################################################################################
-; 													(PERFECTO)
+; 													(PERFECTO*************)
 global c_borrar
 c_borrar:
 	push rbp
@@ -525,7 +486,7 @@ c_borrar:
 ;##################################						rdi        rsi          xmm0			 ######################################	
 ;# Crea una ruta y completa sus campos respetando orden lexicográfico entre ciudades, no puede exister una ruta entre la misma ciudad #
 ;######################################################################################################################################
-
+;																(PERFECTO*************)
 global r_crear
 r_crear:
 
@@ -588,6 +549,9 @@ r_crear:
 ;#######################################    			rdi       rsi    	##############################################
 ;#############  Compara dos rutas por el nombre de las ciudades. Primero compara por la primer ciudad y en ###############
 ;############################### caso de ser iguales compara por la segunda ciudad. ######################################
+;#########################################################################################################################
+; 													(PERFECTO)
+
 global r_cmp
 r_cmp:
 
@@ -596,26 +560,29 @@ r_cmp:
 	push rbx
 	push r12
 	
-	mov rbx,rdi						; rbx <-- r1
-	mov r12,rsi						; r12 <-- r2
+	mov rbx,rdi						; rbx <-- rdi
+	mov r12,rsi						; r12 <-- rsi
 	
-	mov rdi, [rdi + offset_ciudadA_ruta]
-	mov rsi, [rsi + offset_ciudadA_ruta]
+	; comparo la primer componente
+	mov rdi, [rbx + offset_ciudadA_ruta]
+	mov rdi, [rdi + offset_nombre_ciudad]
+	mov rsi, [r12 + offset_ciudadA_ruta]
+	mov rsi, [rsi + offset_nombre_ciudad]
 	
 	call str_cmp					; eax <-- 0 si son igual 1 o -1 sino  
-	
 	
 	cmp eax, 0
 	je .comparar_segunda_ciudad 
 	jmp .fin_cmp
 
 .comparar_segunda_ciudad:
-	mov rdi,[rbx + offset_ciudadB_ruta]
-	mov rsi,[r12 + offset_ciudadB_ruta]
-	
+	mov rdi, [rbx + offset_ciudadB_ruta]
+	mov rdi, [rdi + offset_nombre_ciudad]
+	mov rsi, [r12 + offset_ciudadB_ruta]
+	mov rsi, [rsi + offset_nombre_ciudad]
+		
 	call str_cmp
-	
-	
+		
 .fin_cmp:
 	pop r12
 	pop rbx
@@ -627,6 +594,7 @@ r_cmp:
 ;#############################################					rdi 	 #################################################
 ;############################### 	Borra una ruta. No borra las ciudades asociadas. 	##################################
 ;#########################################################################################################################
+; 													(PERFECTO*******)
 
 global r_borrar
 r_borrar:
@@ -644,7 +612,7 @@ r_borrar:
 ;##########################################								rdi 	##########################################
 ;#################################	Crea una red caminera vacia. Copia el nombre de la red.	##############################
 ;#########################################################################################################################
-
+; 														(PERFECTO *********)
 global rc_crear
 rc_crear:
 	push rbp
@@ -684,78 +652,51 @@ rc_crear:
 ;####################						 rdi				rsi 			rdx				##########################
 ;############## 	Agrega una nueva ciudad a la red de forma ordenada. En el caso de existir, no agrega nada. ###########
 ;#########################################################################################################################
+; 														(PERFECTO**************)			
+
 
 global rc_agregarCiudad
 rc_agregarCiudad:
 	push rbp
 	mov rbp, rsp
 	push rbx
-	push r12
+	push r12 
 	push r13
-	push r14
-	
-	mov rbx, rdi									; rbx <-- *redCaminera
-	mov r13,rsi										; r13 <-- *nombre
-	mov r14,rdx										; r14 <-- poblacion
-	
-	; tenemos que ver que ese nombre no este en la lista de ciudades
-	
-	mov rbx, [rbx + offset_ciudades_redCaminera]		; rbx <-- *listaCiudades
-	mov r12, rbx										; r12 <-- *listaCiudades
-	mov rbx, [rbx + offset_primero_lista]				; rbx <-- *primero_de_la_lista
-	
-	cmp rbx, NULL										; veo el primer elemento 
-		
-	je .dejamos_de_buscar_y_agregamos
-	
-	; si estamos aca es porq la lista tiene al menos un elemento
-	; comparamos nombre con todos los elementos de la lista ciudad
-	
-	;  rbx --- tengo el primer elemento de la lista
-	
-.continua_la_busqueda:	
-	
-	mov r14, rbx										; r14 <-- me guardo el puntero al nodo donde estoy parado
-	
-	mov rbx, [rbx + offset_dato_nodo]					; rbx <-- *dato 	(del nodo donde toy parado)
-	mov rdi, [rbx + offset_nombre_ciudad]				; rdi <-- *nombre	(del nodo donde toy parado)
-	;mov rdi, rbx
-	mov rsi, r13										; rsi <-- *nombre 	(de la ciudad que quiero agregar)
-	
-	call str_cmp										; comparo rdi y rsi 
-	
-	cmp eax, 0
-	
-	je .no_agrego_ciudad								; si la ciudad ya existe termino todo 
-	
-	;veo ahora si el siguiente no es null
-	
-	mov rbx, [r14 + offset_siguiente_nodo]
-	cmp rbx, NULL
-	je .dejamos_de_buscar_y_agregamos
-	
-	jmp .continua_la_busqueda
-	 
-.dejamos_de_buscar_y_agregamos:
+	push r14									
 
-	mov rdi, r13									; rdi (tiene que ir nombre)
-	mov rsi, r14									; rsi (tiene que ir poblacion)
-	call c_crear									; rax <-- *newCiudad
-	
+	mov rbx, rdi										; rbx tengo redCaminera*							
+	mov r14, rdx 										; r14 tengo la poblacion
+    mov r12, [rbx + offset_ciudades_redCaminera]		; 
+	mov r12, [r12 + offset_primero_lista]				; r12 *primero	
+	mov r13, rsi										; r13 tengo *nombre
 
-	lea rdi, [r12]									;  rdi <-- **lista de ciudades
-	
-	mov rsi, rax 									; el dato es el *newCiudad
-	
-	mov rdx, c_borrar								; paso funcion c_borrar
-	
-	mov rcx, str_cmp								; paso funcion str_cmp
-	
-	call l_agregarOrdenado
-	
-	
-.no_agrego_ciudad:
-	
+.buscamos_si_el_nombre_esta:
+
+	cmp r12, NULL
+	je .agregar_ciudad 
+
+	mov rdi, r13						
+	mov rsi, [r12 + offset_dato_nodo]				
+	mov rsi, [rsi + offset_nombre_ciudad]			 
+	call str_cmp							
+	cmp eax, 0									
+	je .fin										
+	mov r12, [r12 + offset_siguiente_nodo]		
+	jmp .buscamos_si_el_nombre_esta
+
+.agregar_ciudad:
+	mov rdi, r13 								
+	mov rsi, r14
+	call c_crear
+
+	mov rsi, rax 								
+	lea rdi, [rbx+offset_ciudades_redCaminera]	
+	mov rdx, c_borrar 							
+	mov rcx, c_cmp 								
+
+	call l_agregarOrdenado						
+
+.fin:
 	pop r14
 	pop r13
 	pop r12
@@ -768,86 +709,105 @@ rc_agregarCiudad:
 ;#################						rdi 			rsi 			rdx				xmm0		###############	
 ;#########	Agrega una ruta nueva a la red de forma ordenada. En el caso de existir, no agrega nada.	###########
 ;##################################################################################################################
-
+;													(PERFECTO ************)
+ 
 global rc_agregarRuta
-
 rc_agregarRuta:
 	push rbp
 	mov rbp, rsp
 	push rbx
-	push r12
+	push r12 
 	push r13
-	push r14
-		
-	
-	; tenemos que ver si podemos agregar la ruta o no 
-	
-	;guardemos la info
-	mov rbx, rdi											; rbx <-- *redCaminera
-	;info guardada podemos hacer call de lo que queramos
-	
-	; vamos a crear la ruta si o si (si la puedo agregar la agrego sino le mando free)
-	mov rdi, rsi
-	mov rsi, rdx
-	; xmm0 tengo lo que queria
-	call r_crear											; rax <-- *newRuta
-	mov r13,rax												; GUARDO rax
-	
-	; ahora tengo que ver si ya estaba o no en la lista de rutas (similar a agregar ciudad)
-	;(puede que r_crear me de NULL)
-	cmp rax, NULL
+	push r14									
+	push r15			
+	sub rsp, 8									
 
-	je .ruta_no_valida_no_agrego_ruta
-	
-	; si toy aca es porque cree una ruta VALIDA.
-	
-	mov rbx, [rbx + offset_rutas_redCaminera]				; rbx <-- *lista_de_rutas
-	mov r12, rbx 											; GUARDO rbx 
-	mov rbx, [rbx + offset_primero_lista]					; rbx <-- *primer_de_la_lista_de_rutas
-	cmp rbx, NULL 											; veo si la lista era vacia
-	je .dejamos_de_buscar_y_agregamos_ruta
-	
-	; en este punto tenemos una lista que no es vacia y un posible nodo a agregar		
-	; rbx tengo el primer elemento de la lista rutas	
-	
-.continua_la_busqueda_ruta:	
-	mov r14, rbx 											; GUARDO "el nodo actual, en el que estoy parado"
-	
-	mov rdi,[rbx + offset_dato_nodo]						; rbx <-- *rutaActualdeLaLista 
-	mov rsi,r13  	
-	call r_cmp
-	
+	; GUARDO INFO 
+	mov rbx, rdi												; rbx <-- *rc										
+	mov r12, rsi 												; r12 <-- *nombreCiudad1
+	mov r13, rdx												; r13 <-- *nombreCiudad2
+	movq r14, xmm0												; r14 <-- distancia
+
+	; si los nombres son iguales no agrego nada
+	mov rdi, r12
+	mov rsi, r13
+	call str_cmp
+	cmp rax, 0
+	je .fin
+
+	mov r15, [rbx+offset_ciudades_redCaminera]
+	mov r15, [r15+offset_primero_lista]							; r15 <-- primerCiudad  
+
+.buscamos_si_nombreCiudad1_esta_en_ciudades:
+	cmp r15, NULL
+	je .fin
+	mov rdi, [r15 + offset_dato_nodo]
+	mov rdi, [rdi + offset_nombre_ciudad]						; paso el nombre de la ciudad de la lista
+	mov rsi, r12												; paso nombreCiudad1
+	call str_cmp						
+	cmp eax, 0													; si son iguales busco la ciudad 2
+	je .buscamos_si_nombreCiudad2_esta_en_ciudades
+	mov r15, [r15 + offset_siguiente_nodo]
+	jmp .buscamos_si_nombreCiudad1_esta_en_ciudades
+
+.buscamos_si_nombreCiudad2_esta_en_ciudades:					; lo mismo que antes pero con el nombreCiudad2
+	mov r12, [r15 + offset_dato_nodo]							; r12 me guardo el * ciudad que coincide el primer nombre
+	mov r15, [rbx+offset_ciudades_redCaminera]
+	mov r15, [r15+offset_primero_lista]
+
+.busqueda_Ciudad2:
+	mov rdi, [r15+offset_dato_nodo]
+	mov rdi, [rdi+offset_nombre_ciudad]
+	mov rsi, r13
+	call str_cmp
 	cmp eax, 0
-	je .la_ruta_ya_esta_NO_agrego_y_borro_la_que_cree
-	
-	; si estoy aca es porque tengo que seguir buscando
-	
-	mov rbx, [r14 + offset_siguiente_nodo]
-	cmp rbx, NULL
-	je .revisamos_todas_las_rutas_agreguemos
-	
-	jmp .continua_la_busqueda_ruta
-	
-.dejamos_de_buscar_y_agregamos_ruta:
-.revisamos_todas_las_rutas_agreguemos:
-	
-	lea rdi, [r12]											; rdi <-- **lista_de_rutas
-	mov rsi, r13											; r13 <-- *dato(ruta)
-	mov rdx, r_borrar
-	mov rcx, r_cmp	
-	
-	call l_agregarOrdenado
-	
-	jmp .agregado_correctamente
-	
-.la_ruta_ya_esta_NO_agrego_y_borro_la_que_cree:
+	je .creamos_ruta
+	mov r15, [r15+offset_siguiente_nodo]
+	cmp r15, NULL
+	je .fin
+	jmp .busqueda_Ciudad2
 
-	mov rdi,r13
+.creamos_ruta:
+	mov r13, [r15+offset_dato_nodo]				; creamos la ruta 
+	mov rdi, r12 				 						
+	mov rsi, r13
+	movq xmm0, r14
+	call r_crear 									; rax <-- rutaNueva		
+
+	mov r13, rax 									; (guardo) r13 la rutaNueva 		
+    mov r12, [rbx+offset_rutas_redCaminera]				
+	mov r12, [r12+offset_primero_lista]			
+	cmp r12, NULL								 							
+	je .agregar 									; si la lista esta vacia agregamos ruta
+
+.vemos_si_la_ruta_yasta:
+	mov rdi, r13								 
+	mov rsi, [r12+offset_dato_nodo]				
+	call r_cmp										; cmp las rutas
+	cmp eax, 0									
+	je .la_ruta_yasta_eliminar_nuevaRuta			; si esta tengo que eliminarla					
+
+	mov r12, [r12+offset_siguiente_nodo]			; sino continuo hasta recorrer todas las rutas				
+	cmp r12, NULL 												
+	je .agregar									
+	jmp .vemos_si_la_ruta_yasta								
+
+.la_ruta_yasta_eliminar_nuevaRuta:
+	mov rdi, r13
 	call free
-.ruta_no_valida_no_agrego_ruta:
-.agregado_correctamente:
+	jmp .fin
 
-	pop  r14
+.agregar:											; paso los parametros para l_agregarOrdenado (*listaRutas, *ruta , r_borrar, r_cmp)
+	lea rdi, [rbx+offset_rutas_redCaminera]
+	mov rsi, r13 			
+	mov rdx, r_borrar 							
+	mov rcx, r_cmp 								
+	call l_agregarOrdenado 					
+		
+.fin:
+	add rsp, 8
+	pop r15
+	pop r14
 	pop r13
 	pop r12
 	pop rbx
@@ -859,8 +819,7 @@ rc_agregarRuta:
 ;#########################################					rdi 		##############################
 ;#######################	Borra toda la red caminera. Tanto ciudades como rutas.	##################
 ;#####################################################################################################
-
-
+; 											(PERFECTO)
 global rc_borrarTodo
 
 rc_borrarTodo:
@@ -896,6 +855,7 @@ rc_borrarTodo:
 ;########	Dada una red caminera y un nombre, busca el nombre de ciudad pasado por parámetro y retorna	  ######	
 ;########### 	un puntero a la ciudad correspondiente. De no existir la ciudad, retorna null. 		############
 ;###############################################################################################################
+; 											(PERFECTO)
 
 global obtenerCiudad
 obtenerCiudad:
@@ -960,6 +920,7 @@ obtenerCiudad:
 ;#####	Dada una red caminera y un par de nombres de ciudades, obtiene el puntero a la ruta que   ######
 ;##################		conecta ambas ciudades. De no existir la ruta, retorna null.	################
 ;#######################################################################################################
+; 												(PERFECTO)
 global obtenerRuta
 obtenerRuta:
 	push rbp
@@ -981,66 +942,74 @@ obtenerRuta:
 	mov rdi, r12
 	mov rsi, r13
 	call str_cmp
-	
 	cmp eax, 0
-	je .no_existe_ruta
+	je .ciudadNoexiste
 	
-	; si estoy aca es posible que exista la ruta (ya que los nombres son distintos)
-	;	AHORA veamos que las ciudades sean parte de la red
-	; si ninguna esta 
+	;si toy aca me pasaron nombres distintos (puede haber ruta)
 	
-	mov rbx, [rbx + offset_rutas_redCaminera]	;rbx <-- *lista_de_rutas
-	mov rbx, [rbx + offset_primero_lista]		;rbx <-- *primerNodo
-	
-.continuar_busqueda_ruta:	
-	cmp rbx, NULL
-	je .no_existe_ruta
-	
-	mov r14, rbx								; r14 (guardo el nodo actual)
-	; si no es vacia veo el valor de dato
-	mov rbx, [rbx + offset_dato_nodo ]			; rbx <-- *dato (ruta)
-	mov r15, rbx								; r15 (guardo el dato)
-	mov rbx, [rbx + offset_ciudadA_ruta]		; rbx <-- *ciudadA(ruta)
-	mov rbx, [rbx + offset_nombre_ciudad]		; rbx <-- *nombre de la ciudadA
-	
-	mov rdi, rbx 								; veo si coincide con nombre1
+	mov rdi, rbx
 	mov rsi, r12
-	call str_cmp
-	; su coincide tengo que chequear nombre2
-	cmp eax,0
-	je .comparar_ciudadB						
+	call obtenerCiudad							; miro si el primer nombre esta en ciudades
+	cmp rax, NULL 
+	je .ciudadNoexiste
 	
-	;si estamos aca tenemos que seguir recorriendo la lista
-	mov rbx, [r14 + offset_siguiente_nodo]
-	jmp .continuar_busqueda_ruta		
-	 
-.comparar_ciudadB:
-	mov rbx, [r15 + offset_ciudadB_ruta]
+	;si estamos aca es porq el nombre1 es una ciudad de la red
 	
-	mov rdi,rbx
+	mov rdi, rbx
 	mov rsi, r13
+	call obtenerCiudad
+	cmp rax, NULL 
+	je .ciudadNoexiste
+	
+	; ahora es MAS posible que la ruta exista
+	; vamos a crear una ruta (provisoria)
+	
+	mov rbx, [rbx + offset_rutas_redCaminera]
+	mov rbx,[rbx + offset_primero_lista]
+.busqueda_ruta:	
+	cmp rbx, NULL 								;comparo el primero de la lista con null
+	je .ciudadNoexiste
+	
+	; si no es null comparo los valores datos-ciudadX con los que me pasaron
+	
+	mov r15, [rbx + offset_dato_nodo]
+	mov r8, [r15 + offset_ciudadA_ruta]
+	mov r8, [r8 + offset_nombre_ciudad]
+	
+	mov rdi, r12
+	mov rsi, r8
 	call str_cmp
-	cmp eax, 0
-	je .encontre_la_ruta
-	;sino tenemos que seguir buscando
-	mov rbx,[r14+offset_siguiente_nodo]
-	jmp .continuar_busqueda_ruta
+	cmp eax,0
+	je .chequeo_ciudadB
+.avanzar:	
+	mov rbx, [rbx + offset_siguiente_nodo]
+	jmp .busqueda_ruta
 	
-.encontre_la_ruta:
-	
-	mov rax,r15
-	jmp .ruta_encontrada_devolver
-	 
-.no_existe_ruta:
-		
+.chequeo_ciudadB:
+	mov r8,[r15 + offset_ciudadB_ruta]
+	mov r8, [r8 + offset_nombre_ciudad]
+	mov rdi, r13
+	mov rsi, r8
+	call str_cmp
+	cmp eax,0
+	je .encontre_ruta
+	jmp .avanzar
+
+.encontre_ruta:
+	mov rax, r15
+	jmp .termino_la_busqueda
+
+.ciudadNoexiste:
 	mov rax, NULL
-.ruta_encontrada_devolver:	
+
+.termino_la_busqueda:	
 	
 	add rsp,8
 	pop r15
 	pop r14
 	pop r13
 	pop r12
+	pop rbx
 	pop rbp
 	ret
 	
@@ -1049,104 +1018,124 @@ obtenerRuta:
 ;#####################################						RDI				############################
 ;###### 	Retorna el puntero a la ciudad mas poblada de la red caminera pasada por parámetro.  #######
 ;#######################################################################################################
+;												(PERFECTO)
+
 global ciudadMasPoblada
+
 ciudadMasPoblada:
 	push rbp
 	mov rbp, rsp
 	push rbx
 	push r12
 	push r13
+	push r14
+	push r15
 	sub rsp,8
+	
+
+;	sub rax,rbx  rax - rbx igual que el cmp 
 	
 	mov rbx,[rdi + offset_ciudades_redCaminera] 		; rbx <-- *lista_de_ciudades
 	mov rbx,[rbx +  offset_primero_lista]				; rbx <-- *nodo(ciudad)
-	mov rax, NULL
 	cmp rbx,NULL
 	je .no_hay_ciudades
 	
-	mov r12, rbx 										; r12 me (guardo) el nodo actual 
-	xor r8,r8											; r8 va a tener el valor mas grande de poblacion
-	
-.continua_busqueda_maximo:	
-	mov rbx,[rbx + offset_dato_nodo]					; rbx <-- *ciudad
-	mov r13, rbx										; r13 me (guardo) la ciudad actual
-	mov rbx,[rbx + offset_poblacion_ciudad]				; rbx <-- poblacion de la ciudad actual
-	cmp rbx, r8
-	jg .actualizar_maximo								;(si es mayor rbx que r8) 	
-	
-	; si toy aca aun sigo con el mismo maximo tengo que avanzar en la lista
-.pasar_a_siguiente:	
-	mov rbx, [r12 + offset_siguiente_nodo]
-	cmp rbx, NULL
-	je .devolver_maximo
-	jmp .continua_busqueda_maximo
-	
-.actualizar_maximo:
-	
-	mov rax, r13
-	mov r8, rbx
-	jmp .pasar_a_siguiente 	
+	mov rax,[rbx + offset_dato_nodo]				; la primer es la mas  poblada si no se recorre mas
+	mov r12,[rax + offset_poblacion_ciudad]			; r12 tiene la poblacion maxima hasta ahora
 
-.devolver_maximo:
+.continuar:		
+	mov rbx,[rbx +  offset_siguiente_nodo]			; miro el siguiente si es null termino
+	cmp rbx, NULL
+	je .devolverMaximo
+	mov r13,[rbx + offset_dato_nodo]
+	mov r14,[r13 + offset_poblacion_ciudad]
+	cmp r14,r12
+	jg .actualizarMaximo
+	jmp .continuar
+	
+.actualizarMaximo:	
+	mov rax, r13
+	mov r12, r14
+	jmp .continuar
+
+.devolverMaximo:	
+	jmp .terminarMaximo
+	
 .no_hay_ciudades:	
+	mov rax, NULL
+
+.terminarMaximo:
 	add rsp,8
+	pop r15
+	pop r14
 	pop r13
 	pop r12
 	pop rbx
 	pop rbp
 	ret
+	
 ;#####################################################################################################
 ;#########################	ruta* rutaMasLarga(redCaminera* rc); #####################################
 ;##############################  					rdi				##################################
 ;##	Retorna el puntero a la ruta mas larga de la red caminera pasada por parámetro. De existir mas ###
 ;########################## 	de una, se toma la de nombre mas chico.		##########################
 ;#####################################################################################################
+; 											(PERFECTO)
 global rutaMasLarga
+
 rutaMasLarga:
 	push rbp
 	mov rbp, rsp
+	push rbx
 	push r12
 	push r13
+	push r14
+	push r15
+	sub rsp,8
 	
-	mov rbx,[rdi + offset_rutas_redCaminera]			; rbx  <-- *lista de rutas
-	mov rbx,[rbx + offset_primero_lista]				; rbx  <-- *primero (nodo)
-	
-	; veo si el primero es null
-	cmp rbx, NULL
-	; si es null devuelvo en rax NULL
-	je .retornar_null 
-	
-	xor r8,r8											; va a ser mi initialize
-	
-.continua_busqueda_ruta:	
-	mov r12, rbx										; r12 (guardo)el nodo actual		
-	mov rbx,[rbx + offset_dato_nodo]					; rbx  <-- *dato(ruta)
-	mov r13, rbx 										; r13 (GUARDO) el *dato posible a devolver
-	mov rbx,[rbx + offset_distancia_ruta]				; rbx  <-- distancia
-	
-	cmp rbx, r8
-	jg .actualizar_maxima_distancia
 
-.avanzamos_en_la_ruta:	
-	mov rbx, [r12 + offset_siguiente_nodo]
-	cmp rbx, NULL
-	je .devolver_la_ruta_mas_larga
-	jmp .continua_busqueda_ruta
-		
-.actualizar_maxima_distancia:
-	mov rax, r12
-	mov r8, rbx	
-	jmp .avanzamos_en_la_ruta
+;	sub rax,rbx  rax - rbx igual que el cmp 
+	
+	mov rbx,[rdi + offset_rutas_redCaminera] 		; rbx <-- *lista_de_rutas
+	mov rbx,[rbx +  offset_primero_lista]			; rbx <-- *nodo(ciudad)
+	cmp rbx,NULL
+	je .no_hay_rutas								; si es ta vacias termino
+	
+	mov rax,[rbx + offset_dato_nodo]				; la primer es la mas  poblada si no se recorre mas
+	mov r12,[rax + offset_distancia_ruta]			; r12 tiene la poblacion maxima hasta ahora
 
-.retornar_null:
+.continuar:		
+	mov rbx,[rbx +  offset_siguiente_nodo]			; miro el siguiente si es null termino
+	cmp rbx, NULL
+	je .devolverMaximo
+	mov r13,[rbx + offset_dato_nodo]
+	mov r14,[r13 + offset_distancia_ruta]
+	cmp r14,r12
+	jg .actualizarMaximo
+	jmp .continuar
+	
+.actualizarMaximo:	
+	mov rax, r13
+	mov r12, r14
+	jmp .continuar
+
+.devolverMaximo:	
+	jmp .terminarMaximo
+	
+.no_hay_rutas:	
 	mov rax, NULL
-	
-.devolver_la_ruta_mas_larga:
-	
+
+.terminarMaximo:
+	add rsp,8
+	pop r15
+	pop r14
 	pop r13
 	pop r12
+	pop rbx
 	pop rbp
 	ret
+
+
 
 
 ;#####################################################################################################
@@ -1155,13 +1144,33 @@ rutaMasLarga:
 ;#### Modifica los valores de los dobles punteros a ciudad, de forma de cargar en los mismos las #####
 ;##ciudades a mas distancia entre si. De existir mas de una, se toma la primer nombre mas chico. #####
 ;#####################################################################################################
+; 										(CREO QUE PERFECTO)	
 global ciudadesMasLejanas
 ciudadesMasLejanas:
 	push rbp
 	mov rbp, rsp
+	push rbx 
+	push r12
+	push r13
+	sub rsp,8
 	
+	mov rbx, rdi
+	mov r12, rsi
+	mov r13, rdx
 	
+	mov rdi, rbx 
+	call rutaMasLarga			; en rax obtengo la ruta mas larga 
 	
+	mov r8, [rax + offset_ciudadA_ruta]
+	mov r9, [rax + offset_ciudadB_ruta]
+	
+	mov [r12],r8
+	mov [r13],r9
+
+	add rsp, 8
+	pop r13
+	pop r12
+	pop rbx
 	pop rbp
 	ret
 
@@ -1170,7 +1179,7 @@ ciudadesMasLejanas:
 ;#######################################					rdi 		##############################
 ;################	Obtiene la cantidad total de distancias de todas las rutas de la red. ############
 ;#####################################################################################################
-
+; 									(PERFECTO)
 global totalDeDistancia
 totalDeDistancia:
 	push rbp
@@ -1202,7 +1211,6 @@ totalDeDistancia:
 	;si no salté tengo que seguir recorriendo
 	jmp .calculando_total
 	
-	
 .devolver_total_de_distancia:
 	
 	pop r12
@@ -1215,7 +1223,7 @@ totalDeDistancia:
 ;#################################						rdi 		##################################
 ;#########   Obtiene la cantidad de poblacion de todas las ciudades de la red. 	######################
 ;#####################################################################################################
-
+; 									(PERFECTO)
 global totalDePoblacion
 totalDePoblacion:
 	push rbp
@@ -1253,13 +1261,16 @@ totalDePoblacion:
 	pop rbp
 	ret
 
+
 ;#####################################################################################################
 ;################3	uint32 t cantidadDeCaminos(redCaminera *rc, char* ci);  ##########################
 ;####################################				rdi 		rsi 	##############################
 ;###### Dado el nombre de una ciudad, obtiene la cantidad de rutas que conectan a dicha ciudad. ######
 ;#####################################################################################################
+;												(PERFECTO)
 
 global cantidadDeCaminos
+
 cantidadDeCaminos:
 	push rbp
 	mov rbp, rsp
@@ -1270,51 +1281,55 @@ cantidadDeCaminos:
 	push r15
 	sub rsp, 8
 	
-	
+	mov rbx, rdi								; rbx (guardo) * redCaminera	
 	mov r12, rsi 								; rsi (guardo) *nombre de la ciudad
 	
 	mov rbx, [rbx + offset_rutas_redCaminera]	; rbx <-- * lista de rutas
-	
 	mov rbx, [rbx + offset_primero_lista]		; rbx <-- * primer nodo
 	
-	;limpiamos mi contador
-	xor rax, rax
-	mov r15d, eax
+	;limpiamos mi contador								
+	xor r15, r15
+	
 	; veo si mi lista es vacia
 	cmp rbx, NULL
 	je .ya_recorrimos_todo_devolver_valor_calculado
 	
 	;si estamos aca la lista tiene al menos una ruta veamos si uno de sus extremos es la ciudad
+
 .recorrer_rutas:	
 	mov r13, rbx 								; r13 (guardo) el nodo actual	
 	mov rbx, [rbx + offset_dato_nodo]			;rbx <-- * ruta del nodo actual
 	
-	mov rbx, [rbx + offset_ciudadA_ruta]		; rbx <-- *ciudadA
-	mov r14, [rbx + offset_ciudadB_ruta]		; r14 <-- *ciudadB
+	mov r14, [rbx + offset_ciudadA_ruta]		; r15 <-- *ciudadA
+;	mov r14, [rbx + offset_ciudadB_ruta]		; r14 <-- *ciudadB
 	
 	
 	; vemos si la ciudadA es igual al nombre pasado
 	mov rdi, r12
-	mov rsi, [rbx + offset_nombre_ciudad]
+	mov rsi, [r14 + offset_nombre_ciudad]
 	call str_cmp
 	cmp eax, 0
 	je .incrementar_contador
 	
 	; si estoy aca es porq ciudadA no es, hay que ver si es ciudadB
-	
+	mov r14, [rbx + offset_ciudadB_ruta]
 	mov rdi,r12
 	mov rsi,[r14 + offset_nombre_ciudad]
 	call str_cmp
+	cmp eax,0
 	je .incrementar_contador
 	
 	; si estoy aca tengo que avanzar en la lista_rutas 
-	mov rbx, [r13+ offset_siguiente_nodo]
+	mov rbx, [r13 + offset_siguiente_nodo]
 	cmp rbx, NULL
 	je .ya_recorrimos_todo_devolver_valor_calculado
 	jmp .recorrer_rutas	
 	
 .incrementar_contador:
 	inc r15d
+	mov rbx, [r13 + offset_siguiente_nodo]
+	cmp rbx, NULL
+	je .ya_recorrimos_todo_devolver_valor_calculado
 	jmp .recorrer_rutas
 
 .ya_recorrimos_todo_devolver_valor_calculado:		
@@ -1335,6 +1350,7 @@ cantidadDeCaminos:
 ;### Obtiene el puntero a la ciudad que mas caminos la conectan. De existir mas de una, se toma la ###
 ;############################   	de nombre mas chico.		######################################	
 ;#####################################################################################################
+;
 
 global ciudadMasComunicada
 ciudadMasComunicada:
@@ -1347,33 +1363,26 @@ ciudadMasComunicada:
 	push r15
 	sub rsp,8
 	
-	
 	mov r12, rdi												; r12 (guardo) el *redCiudad 
 	mov rbx, [rdi + offset_ciudades_redCaminera]				; rbx <-- *lista de ciudades
 	mov rbx, [rbx + offset_primero_lista]						; rbx <-- *primero (nodo)
 	cmp rbx, NULL
 	je .no_hay_ciudades
-	; si estoy aca tengo por lo menos una ciudad
-	
-	xor r13, r13												; r13 (guardo) mi contador 
-	
+	; si estoy aca tengo por lo menos una ciudad	
+	xor r13, r13												; r13 (guardo) mi contador (lo seteo en 0)
+		
 .busqueda_de_la_mas_poblada:	
 	mov r14, rbx												; r14 (guardo) nodo actual
-	mov rsi, [rbx + offset_dato_nodo]							; rsi <-- *ciudad	
+	mov rbx, [rbx + offset_dato_nodo]							; rbx <-- *ciudad		
 
-	
-	mov rbx,rsi													; rbx (guardo) el *ciudad	
-	
-	mov rsi, [rsi + offset_nombre_ciudad]						; rsi <-- *nombre de la ciudad
+	; calculo la cantidad de caminos de la CIUDAD
 	mov rdi, r12												; rdi <-- * redCaminera
-	call cantidadDeCaminos
-																; eax <-- tengo la cant de caminos de la ciudad actual
-																
+	mov rsi, [rbx + offset_nombre_ciudad]						; rsi <-- *nombre de la ciudad
+	call cantidadDeCaminos										; eax <-- tengo la cant de caminos de la ciudad actual
 	cmp eax, r13d
-	; si son iguales ver cual tiene el nombre mas chico
-	je .ver_nombre_mas_chico
-	; si es mas grande eax actualizo la ciudad mas comunicada
-
+	; si son iguales no actualizo y avanzo
+	je .pasar_a_la_siguiente_ciudad
+	
 	jg .actualizar_ciudad_mas_comunicada																
 
 	; si no salte la ciudad es menos comunicada de la que ya tenia antes	
@@ -1386,17 +1395,6 @@ ciudadMasComunicada:
 	; sino salte tengo mas que recorrer
 	jmp .busqueda_de_la_mas_poblada
 	
-.ver_nombre_mas_chico:
-	;rbx tengo *ciudad actual  r15 tengo el historico
-
-	mov rdi,[r15 + offset_nombre_ciudad]
-	mov rsi,[rbx + offset_nombre_ciudad]
-	call str_cmp
-	; en eax tengo 1 si r15 nombre es menor que rbx nombre --- avanzo en la lista de ciudades
-	cmp eax, 1
-	je .pasar_a_la_siguiente_ciudad
-	; si no salto es que el nombre de rbx es menor entonces actualizo
-
 .actualizar_ciudad_mas_comunicada:
 
 	mov r15,rbx 
@@ -1414,6 +1412,7 @@ ciudadMasComunicada:
 	
 .fin_ciudad_mas_poblada:	
 	
+	add rsp,8
 	pop r15
 	pop r14
 	pop r13
@@ -1430,129 +1429,137 @@ ciudadMasComunicada:
 ;##############		 Copia una string de C terminada en 0.		#####################
 ;####################################################################################
 
-;global str_copy
-;str_copy:
-	;push rbp
-	;mov rbp, rsp
-	
-	
-	
-	;pop rbp
-	;ret
-
-;global str_cmp
-;str_cmp:
-	;push rbp
-	;mov rbp, rsp
-	
-	
-	
-	;pop rbp
-	;ret
-
 global str_copy
 str_copy:
 	push rbp
 	mov rbp, rsp
+	push rbx
 	push r12
-	push r13 							;	# pila alineada #
-
-	mov r12, rdi 						; 	# me guardo el puntero al string #			
+	push r13
+	push r14
 	
-	mov rdi, 8
-	call malloc 						;	# pido memoria #
+	mov rbx, rdi 						; rbx (guardo) el *char
 
-	mov r11, 0 							;	# r11 = indice #
-	mov r13b, [r12+r11] 					;	# r13 = caracter[r11] #
+	mov rdi, offset_tamanio_puntero
+	call malloc 						; rax puntero que apunta a la copia
+	mov r14, rax
+	
+	xor r13, r13							; limpio r8 es mi indicador de indice
+	mov r12b, [rbx + r13] 				; r12b tengo caracter[actual] 
 
-.ciclo:
-	cmp r13b, 0 						
-	je .termine 						;	# ya copie el string porque termina en cero #
-	mov byte [rax+r11], r13b 			; 	# copio el caracter en memoria #
-	inc r11 							; 	# incremento el indice #
-	mov r13b, [r12+r11] 					;	# r13 = caracter[r11] #
-	jmp .ciclo 							;	# repito el ciclo #
+.continua_copia:
+	cmp r12b, 0 						; si es cero termino
+	je .termine_copia 						
+	mov byte[r14 + r13], r12b 			; sino copio el byte y avanzo
+	inc r13 								 
+	mov r12b, [rbx + r13] 					
+	jmp .continua_copia 							
 
-.termine:
+.termine_copia:
+	pop r14
 	pop r13
 	pop r12
+	pop rbx
 	pop rbp
-ret
+	ret
+	
+	
+;#####################################################################################
+;####################	int32 t str cmp(char* a, char* b);   	######################
+;# Compara dos strings de C terminadas en 0, en orden lexicográfico. Debe retornar: ##
+;##								• 0 si son iguales									##
+;##								• 1 si a < b										##
+;##								• −1 si b < a										##
+;#####################################################################################
 
 global str_cmp
 str_cmp:
 	push rbp
 	mov rbp, rsp
+	push rbx
 	push r12
 	push r13
 	push r14
 	push r15
-	push rbx
-	sub rsp, 8 								; 	# alineo la pila #
+	sub rsp, 8
 
-	xor rbx, rbx
-	mov r8, 1 								;	# r8, r9 y r10 los uso como constantes #
-	mov r9, -1
-	mov r10, 0
+	xor r14, r14 							; contador de la longitud del primer string  
+	xor r15, r15							; contador de la longitud del second string
 
-	mov r14, 0 								;	# variable largo string1 #  
-	mov r15, 0								;	# variable largo string2 #
-
+	
 	mov r12, [rdi]
 	mov r13, [rsi]
-	jmp .largo1
 
-.largo2:									;	# recorro los caracteres del string2 hasta llegar a 0 #
+.calculo_long_primer_string: 				
+	cmp r12b, 0 							
+	je .calculo_long_second_string 		; si es cero termine de calcular longitud de string --> calculo la long del segundo
+	inc r14									; sino incremento contador
+	mov r12b, [rdi + r14]					; y avanzo lo que el contador/indice dice
+	jmp .calculo_long_primer_string
+
+
+.calculo_long_second_string:				; IDEA IGUAL A LA DE CALCULAR LA LONG DE LONG PRIMERO
 	cmp r13b, 0
-	je .fin_largo							; 	# llegue a 0 #
-	inc r15 								;	# incremento el indice #
+	je .fin_largo							; una vez calculada empiezo a comparar los string 	
+	inc r15 								
 	mov r13b, [rsi + r15]
-	jmp .largo2
-
-.largo1: 									;	# recorro los caracteres del string1 hasta llegar a 0 #
-	cmp r12b, 0 
-	je .largo2 								; 	# llegue a 0 #
-	inc r14									;	# incremento el indice #
-	mov r12b, [rdi + r14]
-	jmp .largo1
+	jmp .calculo_long_second_string
+	
+	
+	; 	en este punto tengo:
+	;	r14 <-- long del primer string 
+	;	r15 <-- long del second string
 	
 .fin_largo:
-	mov rcx, r14
 	cmp r14, r15
-	cmovg rcx, r15 							;	# rcx = min(r14,r15) #
+	jl .el_primero_es_masChico
+													
+	mov rcx, r15
+	jmp .rcx_tiene_el_min
 
-	cmovl rbx, r8							; 	# rbx = 1 si r14 < r15 #
-	cmovg rbx, r9							; 	# rbx = -1 si r14 > r15 #
-	cmove rbx, r10							; 	# rbx = 0 si r14 = r15 #
-	mov r11, 0 								;	# indice #
-	mov rax, 0
+.el_primero_es_masChico:
+	mov rcx, r14
 
-	mov r12, [rdi+r11]
-	mov r13, [rsi+r11]
+.rcx_tiene_el_min:	
+
+	xor r11, r11 							; r11 va a ser mi indice para recorrer
+	
+	mov r12, [rdi + r11]
+	mov r13, [rsi + r11]
 	
 .ciclo_cmp:
 	cmp r12b, r13b 							;	# comparo caracteres string1[r11]  con string2[r11] #
-	cmovl rax, r8 							; 	# rax = 1 si string1[r11] < string2[r11] #
-	cmovg rax, r9							; 	# rax = -1 si string1[r11] > string2[r11] #
-	cmove rax, r10							; 	# rax = 0 si string1[r11] = string2[r11] #
-	jl .fin 								;	# rax != 0 entonces salto #
-	jg .fin 								;	# rax != 0 entonces salto #
+	jl .devuelvo_uno						
+	jg .devuelvo_menos_uno					
+												
+	; si no salte es porq devo decir comparando hasta quedarme sin chars a comparar 																;	# rax != 0 entonces salto #
 	inc r11 								;	# incremento el indice #
 	mov r12b, [rdi + r11] 					;	# r12 = siguiente caracter de string1 #
 	mov r13b, [rsi + r11]					;	# r13 = siguiente caracter de string2 #
 	loop .ciclo_cmp 
+	; aca ya termine de recorrer las listas
+	cmp r14,r15
+	je .devuelvo_cero
+	jg .devuelvo_menos_uno
 
-.largo_y_rax:
-	cmp rax, 0 								
-	jne .fin
-	mov rax, rbx 							; 	# si un string es prefijo de otro, entonces me fijo por el largo #
-
+.devuelvo_uno:
+	xor rax,rax
+	mov eax, 1
+	jmp .fin
+	
+.devuelvo_menos_uno:
+	xor rax,rax
+	mov eax, -1
+	jmp .fin
+	
+.devuelvo_cero:
+	xor rax,rax
 .fin:
 	add rsp, 8
-	pop rbx
 	pop	r15
 	pop r14
 	pop r13
 	pop r12
+	pop rbx	
 	pop rbp
-ret
+	ret
